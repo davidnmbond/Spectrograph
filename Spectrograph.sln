@@ -1,0 +1,35 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35312.102
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Spectrograph", "Spectrograph\Spectrograph.csproj", "{F9A847CB-CE1F-4D0B-93B7-35DBC433E994}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{47C757DF-DA6F-4728-9B50-50E2150A29AB}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		Directory.Build.props = Directory.Build.props
+		global.json = global.json
+		README.md = README.md
+		Spectrograph.dic = Spectrograph.dic
+		version.json = version.json
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F9A847CB-CE1F-4D0B-93B7-35DBC433E994}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F9A847CB-CE1F-4D0B-93B7-35DBC433E994}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9A847CB-CE1F-4D0B-93B7-35DBC433E994}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F9A847CB-CE1F-4D0B-93B7-35DBC433E994}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {38B96415-0DA0-466B-A887-9D04EE616846}
+	EndGlobalSection
+EndGlobal

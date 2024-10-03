@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<PropertyGroup>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<TargetFramework>net8.0</TargetFramework>
+		<Copyright>David Bond 2024</Copyright>
+		<Authors>David Bond</Authors>
+		<LangVersion>latest</LangVersion>
+		<MSBuildWarningsAsErrors>MSB3277</MSBuildWarningsAsErrors>
+		<AnalysisLevel>latest-recommended</AnalysisLevel>
+		<Nullable>enable</Nullable>
+		<EnableNETAnalyzers>true</EnableNETAnalyzers>
+		<AnalysisMode>All</AnalysisMode>
+	</PropertyGroup>
+</Project>
