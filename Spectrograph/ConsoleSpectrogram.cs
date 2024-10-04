@@ -25,7 +25,7 @@ public class ConsoleSpectrogram : IDisposable
 		{
 			DeviceNumber = 0,
 			WaveFormat = new WaveFormat(sampleRateHz, 1),
-			BufferMilliseconds = 100
+			BufferMilliseconds = 10
 		};
 
 		_waveIn.DataAvailable += OnDataAvailable;
@@ -34,15 +34,31 @@ public class ConsoleSpectrogram : IDisposable
 
 	private void OnDataAvailable(object? sender, WaveInEventArgs e)
 	{
+		var dcOffset = 0.0;
+
+		// First pass to compute the DC offset
 		for (var i = 0; i < e.BytesRecorded; i += 2)
 		{
 			var sample = BitConverter.ToInt16(e.Buffer, i);
-			var newSample = sample / 32768.0;
+			var normalizedSample = sample / 32768.0; // Normalize to [-1, 1]
+			dcOffset += normalizedSample;            // Sum the samples to compute the DC offset
+		}
+
+		dcOffset /= (e.BytesRecorded / 2);           // Average the sum of the samples
+
+		// Second pass to subtract the DC offset and update the DFT
+		for (var i = 0; i < e.BytesRecorded; i += 2)
+		{
+			var sample = BitConverter.ToInt16(e.Buffer, i);
+			var normalizedSample = sample / 32768.0;
+
+			// Subtract the computed DC offset
+			var dcCorrectedSample = normalizedSample - dcOffset;
 
 			var oldSample = _sampleBuffer[_sampleIndex];
-			_dft.Update(newSample, oldSample);
+			_dft.Update(dcCorrectedSample, oldSample);
 
-			_sampleBuffer[_sampleIndex] = newSample;
+			_sampleBuffer[_sampleIndex] = dcCorrectedSample;
 			_sampleIndex = (_sampleIndex + 1) % WindowSize;
 		}
 
@@ -59,9 +75,10 @@ public class ConsoleSpectrogram : IDisposable
 		}
 		catch (ArgumentOutOfRangeException)
 		{
-			// Can happen when resizing the window
+			// Handle resize exception
 		}
 	}
+
 
 	private void RenderSpectrogram()
 	{
@@ -75,9 +92,12 @@ public class ConsoleSpectrogram : IDisposable
 			_lastTerminalHeight = terminalHeight;
 		}
 
-		var decibels = _dft.GetDecibel();
+		var analysis = _dft.Analyse();
+		var decibels = analysis.Decibels;
+		var decibelRange = decibels.Max() - decibels.Min();
 		var stepSize = (int)Math.Max((0.0 + WindowSize) / terminalWidth, 1);
-
+		var minBarLevel = 100;
+		var maxBarLevel = 0;
 		for (var x = 0; x < terminalWidth - 1; x++)
 		{
 			var startIndex = x * stepSize;
@@ -98,11 +118,21 @@ public class ConsoleSpectrogram : IDisposable
 
 			var barLevel = (int)(terminalHeight * (avgDb + 100) / 256);
 
+			if (minBarLevel > barLevel)
+			{
+				minBarLevel = barLevel;
+			}
+
+			if (maxBarLevel < barLevel)
+			{
+				maxBarLevel = barLevel;
+			}
+
 			UpdateVerticalBar(x, barLevel, _lastDbValues[x], terminalHeight, terminalWidth);
 			_lastDbValues[x] = barLevel;
 		}
 
-		DrawXAxisLabels(terminalHeight, terminalWidth);
+		DrawXAxisLabels(terminalHeight, terminalWidth, analysis.RollingDcOffset);
 	}
 
 
@@ -155,13 +185,18 @@ public class ConsoleSpectrogram : IDisposable
 		return value;
 	}
 
-	private static void DrawXAxisLabels(int terminalHeight, int terminalWidth)
+	private static void DrawXAxisLabels(int terminalHeight, int terminalWidth, double rollingDcOffset)
 	{
 		Console.ForegroundColor = ConsoleColor.White;
 		Console.SetCursorPosition(0, terminalHeight);
 		Console.Write("0kHz".PadRight(5)); // First label
 		Console.SetCursorPosition(terminalWidth - 6, terminalHeight);
 		Console.Write("22kHz"); // Last label
+
+		// Draw the range in the middle at the bottom
+		var text = $"DC Offset: {rollingDcOffset:F5}";
+		Console.SetCursorPosition((terminalWidth - text.Length) / 2, terminalHeight);
+		Console.Write(text);
 	}
 
 	private static ConsoleColor GetColorForPercent(int percent)

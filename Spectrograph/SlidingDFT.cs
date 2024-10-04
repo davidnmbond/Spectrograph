@@ -7,6 +7,8 @@ internal class SlidingDFT
 	private readonly double[] _imag;
 	private readonly double[] _cosTable;
 	private readonly double[] _sinTable;
+	private double _newSampleSum;
+	private int _newSampleCount;
 
 	public SlidingDFT(int windowSize)
 	{
@@ -30,9 +32,14 @@ internal class SlidingDFT
 			_real[k] += (newSample - oldSample) * _cosTable[k];
 			_imag[k] += (newSample - oldSample) * _sinTable[k];
 		}
+
+		_newSampleSum += newSample;
+		_newSampleCount++;
 	}
 
-	public double[] GetDecibel()
+	internal double DcOffset => _newSampleSum / _newSampleCount;
+
+	public Analysis Analyse()
 	{
 		var magnitude = new double[_windowSize];
 		for (var k = 0; k < _windowSize; k++)
@@ -46,6 +53,12 @@ internal class SlidingDFT
 			db[k] = 20 * Math.Log10(magnitude[k] + 1e-12); // Avoid log(0)
 		}
 
-		return db;
+		return new Analysis
+		{
+			Decibels = db,
+			Min = magnitude.Min(),
+			Max = magnitude.Max(),
+			RollingDcOffset = DcOffset
+		};
 	}
 }
