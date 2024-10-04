@@ -132,7 +132,7 @@ public class ConsoleSpectrogram : IDisposable
 			_lastDbValues[x] = barLevel;
 		}
 
-		DrawXAxisLabels(terminalHeight, terminalWidth, analysis.RollingDcOffset);
+		DrawXAxisLabels(terminalHeight, terminalWidth, analysis.RollingDcOffset, decibelRange);
 	}
 
 
@@ -185,7 +185,7 @@ public class ConsoleSpectrogram : IDisposable
 		return value;
 	}
 
-	private static void DrawXAxisLabels(int terminalHeight, int terminalWidth, double rollingDcOffset)
+	private static void DrawXAxisLabels(int terminalHeight, int terminalWidth, double rollingDcOffset, double decibelRange)
 	{
 		Console.ForegroundColor = ConsoleColor.White;
 		Console.SetCursorPosition(0, terminalHeight);
@@ -194,7 +194,7 @@ public class ConsoleSpectrogram : IDisposable
 		Console.Write("22kHz"); // Last label
 
 		// Draw the range in the middle at the bottom
-		var text = $"DC Offset: {rollingDcOffset:F5}";
+		var text = $"DC Offset:{rollingDcOffset:F5}, Spectral Range:{decibelRange:F5}dB";
 		Console.SetCursorPosition((terminalWidth - text.Length) / 2, terminalHeight);
 		Console.Write(text);
 	}
@@ -221,7 +221,7 @@ public class ConsoleSpectrogram : IDisposable
 
 	public void Dispose()
 	{
-		// Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+		// Do not change this code. Put clean-up code in 'Dispose(bool disposing)' method
 		Dispose(disposing: true);
 		GC.SuppressFinalize(this);
 	}
