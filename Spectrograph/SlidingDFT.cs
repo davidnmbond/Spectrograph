@@ -32,12 +32,7 @@ internal class SlidingDFT
 			_real[k] += (newSample - oldSample) * _cosTable[k];
 			_imag[k] += (newSample - oldSample) * _sinTable[k];
 		}
-
-		_newSampleSum += newSample;
-		_newSampleCount++;
 	}
-
-	internal double DcOffset => _newSampleSum / _newSampleCount;
 
 	public Analysis Analyse()
 	{
@@ -58,7 +53,6 @@ internal class SlidingDFT
 			Decibels = db,
 			Min = magnitude.Min(),
 			Max = magnitude.Max(),
-			RollingDcOffset = DcOffset
 		};
 	}
 }
