@@ -1,19 +1,25 @@
-﻿using NAudio.Wave;
+﻿using NAudio.CoreAudioApi;
+using NAudio.Wave;
 using System.Diagnostics;
 
 namespace Spectrograph;
 
 public class ConsoleSpectrogram : IDisposable
 {
+	private const bool UseTestSignal = false;
+
 	private const int WindowSize = 1024;
 	private static readonly double[] _sampleBuffer = new double[1024];
+	private static readonly double[] _demoBuffer = new double[1024];
 	private static readonly int[] _lastDbValues = new int[1000];
 	private bool _disposedValue;
 	private readonly SlidingDFT _dft = new(WindowSize);
 	private readonly WaveInEvent _waveIn;
-	private int _sampleIndex;
 	private int _lastTerminalHeight;
+	private bool _isDrawing;
 	private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+	private readonly Random _random = new();
+	private readonly int _sampleRateHz;
 
 	public ConsoleSpectrogram(int sampleRateHz)
 	{
@@ -21,61 +27,90 @@ public class ConsoleSpectrogram : IDisposable
 		var versionString = typeof(ConsoleSpectrogram).Assembly.GetName().Version!.ToString(3);
 		Console.Title = $"Spectrograph v{versionString}";
 
+		// Enumerate available devices
+		// Get DirectSound devices:
+		var deviceEnumerator = new MMDeviceEnumerator();
+		var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+		for (var i = 0; i < devices.Count; i++)
+		{
+			var device = devices[i];
+			Console.WriteLine($"WaveIn[{i}]: {device.DeviceFriendlyName}");
+		}
+
+		var selectedDevice = 0;
+
 		_waveIn = new()
 		{
-			DeviceNumber = 0,
-			WaveFormat = new WaveFormat(sampleRateHz, 1),
-			BufferMilliseconds = 10
+			DeviceNumber = selectedDevice,
+			WaveFormat = new WaveFormat(sampleRateHz, 16, 1),
+			BufferMilliseconds = 20,
 		};
 
 		_waveIn.DataAvailable += OnDataAvailable;
 		_waveIn.StartRecording();
+		_sampleRateHz = sampleRateHz;
 	}
 
 	private void OnDataAvailable(object? sender, WaveInEventArgs e)
 	{
-		var dcOffset = 0.0;
-
-		// First pass to compute the DC offset
-		for (var i = 0; i < e.BytesRecorded; i += 2)
-		{
-			var sample = BitConverter.ToInt16(e.Buffer, i);
-			var normalizedSample = sample / 32768.0; // Normalize to [-1, 1]
-			dcOffset += normalizedSample;            // Sum the samples to compute the DC offset
-		}
-
-		dcOffset /= (e.BytesRecorded / 2);           // Average the sum of the samples
-
-		// Second pass to subtract the DC offset and update the DFT
-		for (var i = 0; i < e.BytesRecorded; i += 2)
-		{
-			var sample = BitConverter.ToInt16(e.Buffer, i);
-			var normalizedSample = sample / 32768.0;
-
-			// Subtract the computed DC offset
-			var dcCorrectedSample = normalizedSample - dcOffset;
-
-			var oldSample = _sampleBuffer[_sampleIndex];
-			_dft.Update(dcCorrectedSample, oldSample);
-
-			_sampleBuffer[_sampleIndex] = dcCorrectedSample;
-			_sampleIndex = (_sampleIndex + 1) % WindowSize;
-		}
-
-		if (_stopwatch.ElapsedMilliseconds < 100)
+		if (_isDrawing)
 		{
 			return;
 		}
 
-		_stopwatch.Restart();
+		_isDrawing = true;
 
 		try
 		{
-			RenderSpectrogram();
+
+			// Fill _sampleBuffer with the new samples
+			if (UseTestSignal)
+			{
+				// Sine waves at 1/4 amplitude at 1000, 2000 and 4000Hz plus noise at 5% amplitude
+				for (var i = 0; i < _sampleBuffer.Length; i++)
+				{
+					_sampleBuffer[i] =
+						0.25 * Math.Sin(2 * Math.PI * 1000 * i / _sampleRateHz)
+						//+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (2000 * i))
+						//+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (4000 * i))
+						//+ 0.05 * (2 * _random.NextDouble() - 1)
+						;
+				}
+			}
+			else
+			{
+				for (var i = 0; i < e.BytesRecorded; i += 2)
+				{
+					var sample = (short)((e.Buffer[i + 1] << 8) | e.Buffer[i]);
+					_sampleBuffer[i / 2] = sample / 32768.0;
+				}
+			}
+
+			_dft.Update(_sampleBuffer);
+
+			if (_stopwatch.ElapsedMilliseconds < 100)
+			{
+				return;
+			}
+
+			_stopwatch.Restart();
+
+			try
+			{
+				RenderSpectrogram();
+			}
+			catch (ArgumentOutOfRangeException)
+			{
+				// Handle resize exception
+			}
 		}
-		catch (ArgumentOutOfRangeException)
+		catch (Exception exe)
 		{
-			// Handle resize exception
+			Console.WriteLine(exe.ToString());
+		}
+		finally
+		{
+			_isDrawing = false;
 		}
 	}
 
@@ -94,14 +129,11 @@ public class ConsoleSpectrogram : IDisposable
 
 		var analysis = _dft.Analyse();
 		var decibels = analysis.Decibels;
-		var decibelRange = decibels.Max() - decibels.Min();
-		var stepSize = (int)Math.Max((0.0 + WindowSize) / terminalWidth, 1);
-		var minBarLevel = 100;
-		var maxBarLevel = 0;
+		var stepSize = Math.Max((0.0 + WindowSize) / terminalWidth, 1);
 		for (var x = 0; x < terminalWidth - 1; x++)
 		{
-			var startIndex = x * stepSize;
-			var endIndex = Math.Min(startIndex + stepSize, decibels.Length - 1);
+			var startIndex = (int)(x * stepSize);
+			var endIndex = (int)Math.Min(startIndex + stepSize - 1, decibels.Length - 1);
 
 			if (startIndex >= decibels.Length) break;
 
@@ -116,23 +148,15 @@ public class ConsoleSpectrogram : IDisposable
 
 			var avgDb = sumDb / count;
 
-			var barLevel = (int)(terminalHeight * (avgDb + 100) / 256);
-
-			if (minBarLevel > barLevel)
-			{
-				minBarLevel = barLevel;
-			}
-
-			if (maxBarLevel < barLevel)
-			{
-				maxBarLevel = barLevel;
-			}
+			var barLevel = (int)avgDb;
+			// Ensure that the bar level is within the bounds of the terminal
+			barLevel = Bound(barLevel, terminalHeight);
 
 			UpdateVerticalBar(x, barLevel, _lastDbValues[x], terminalHeight, terminalWidth);
 			_lastDbValues[x] = barLevel;
 		}
 
-		DrawXAxisLabels(terminalHeight, terminalWidth, decibelRange);
+		DrawXAxisLabels(terminalHeight, terminalWidth, decibels.Min(), decibels.Max());
 	}
 
 
@@ -148,18 +172,18 @@ public class ConsoleSpectrogram : IDisposable
 
 		if (oldLevel > newLevel)
 		{
-			foreach (var y in Enumerable.Range(newLevel, oldLevel + 1))
+			foreach (var y in Enumerable.Range(newLevel + 1, oldLevel))
 			{
-				Console.SetCursorPosition(xPos, Bound(terminalHeight - y, terminalHeight));
+				Console.SetCursorPosition(xPos, terminalHeight - y);
 				Console.Write(' ');
 			}
 
 			return;
 		}
 
-		foreach (var y in Enumerable.Range(oldLevel, newLevel))
+		foreach (var y in Enumerable.Range(oldLevel + 1, newLevel))
 		{
-			Console.SetCursorPosition(xPos, Bound(terminalHeight - y, terminalHeight));
+			Console.SetCursorPosition(xPos, terminalHeight - y);
 			Console.ForegroundColor = GetColorForPercent(y * 100 / terminalHeight);
 			Console.Write('█');
 		}
@@ -179,13 +203,17 @@ public class ConsoleSpectrogram : IDisposable
 
 		if (value > maxValue)
 		{
-			return maxValue;
+			return maxValue - 1;
 		}
 
 		return value;
 	}
 
-	private static void DrawXAxisLabels(int terminalHeight, int terminalWidth, double decibelRange)
+	private static void DrawXAxisLabels(
+		int terminalHeight,
+		int terminalWidth,
+		double decibelMin,
+		double decibelMax)
 	{
 		Console.ForegroundColor = ConsoleColor.White;
 		Console.SetCursorPosition(0, terminalHeight);
@@ -194,7 +222,7 @@ public class ConsoleSpectrogram : IDisposable
 		Console.Write("22kHz"); // Last label
 
 		// Draw the range in the middle at the bottom
-		var text = $"Spectral Range:{decibelRange:F5}dB";
+		var text = $"min:{decibelMin:F2}dB - max:{decibelMax:F2}";
 		Console.SetCursorPosition((terminalWidth - text.Length) / 2, terminalHeight);
 		Console.Write(text);
 	}

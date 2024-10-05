@@ -25,12 +25,18 @@ internal class SlidingDFT
 		}
 	}
 
-	public void Update(double newSample, double oldSample)
+	public void Update(double[] sampleBuffer)
 	{
-		for (var k = 0; k < _windowSize; k++)
+		for (var n = 0; n < _windowSize; n++)
 		{
-			_real[k] += (newSample - oldSample) * _cosTable[k];
-			_imag[k] += (newSample - oldSample) * _sinTable[k];
+			_real[n] = 0;
+			_imag[n] = 0;
+			var sample = sampleBuffer[n];
+			for (var k = 0; k < _windowSize; k++)
+			{
+				_real[k] += sample * _cosTable[k];
+				_imag[k] += sample * _sinTable[k];
+			}
 		}
 	}
 
