@@ -17,6 +17,7 @@ public class ConsoleSpectrogram : IDisposable
 	private readonly WaveInEvent _waveIn;
 	private int _lastTerminalHeight;
 	private bool _isDrawing;
+	private int _lastTerminalWidth;
 	private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
 	private readonly Random _random = new();
 	private readonly int _sampleRateHz;
@@ -70,10 +71,10 @@ public class ConsoleSpectrogram : IDisposable
 				for (var i = 0; i < _sampleBuffer.Length; i++)
 				{
 					_sampleBuffer[i] =
-						0.25 * Math.Sin(2 * Math.PI * 1000 * i / _sampleRateHz)
-						//+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (2000 * i))
-						//+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (4000 * i))
-						//+ 0.05 * (2 * _random.NextDouble() - 1)
+						1 * Math.Sin(2 * Math.PI * 1000 * i / _sampleRateHz)
+						+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (2000 * i))
+						+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (4000 * i))
+						+ 0.05 * (2 * _random.NextDouble() - 1)
 						;
 				}
 			}
@@ -120,22 +121,22 @@ public class ConsoleSpectrogram : IDisposable
 		var terminalWidth = Console.WindowWidth;
 		var terminalHeight = Console.WindowHeight - 1;
 
-		if (_lastTerminalHeight != terminalHeight)
+		if (_lastTerminalHeight != terminalHeight || _lastTerminalWidth != terminalWidth)
 		{
 			Console.Clear();
 			Array.Clear(_lastDbValues);
 			_lastTerminalHeight = terminalHeight;
+			_lastTerminalWidth = terminalWidth;
+			Console.BufferHeight = terminalHeight + 1;
 		}
 
 		var analysis = _dft.Analyse();
 		var decibels = analysis.Decibels;
-		var stepSize = Math.Max((0.0 + WindowSize) / terminalWidth, 1);
+		var stepSize = (0.0 + WindowSize) / terminalWidth / 4;
 		for (var x = 0; x < terminalWidth - 1; x++)
 		{
-			var startIndex = (int)(x * stepSize);
-			var endIndex = (int)Math.Min(startIndex + stepSize - 1, decibels.Length - 1);
-
-			if (startIndex >= decibels.Length) break;
+			var startIndex = (int)(x * stepSize) + 1;
+			var endIndex = (int)(startIndex + stepSize);
 
 			// Calculate the average decibel value in the range
 			double sumDb = 0;
@@ -148,7 +149,7 @@ public class ConsoleSpectrogram : IDisposable
 
 			var avgDb = sumDb / count;
 
-			var barLevel = (int)avgDb;
+			var barLevel = (int)(avgDb * terminalHeight / 20 * (1.0 + 4 * x / terminalWidth));
 			// Ensure that the bar level is within the bounds of the terminal
 			barLevel = Bound(barLevel, terminalHeight);
 
@@ -163,7 +164,7 @@ public class ConsoleSpectrogram : IDisposable
 	private static void UpdateVerticalBar(int x, int newLevel, int oldLevel, int terminalHeight, int terminalWidth)
 	{
 		// Draw only when there is a change in bar level
-		if (oldLevel == newLevel)
+		if (oldLevel == newLevel || terminalHeight == 0)
 		{
 			return;
 		}
@@ -172,7 +173,7 @@ public class ConsoleSpectrogram : IDisposable
 
 		if (oldLevel > newLevel)
 		{
-			foreach (var y in Enumerable.Range(newLevel + 1, oldLevel))
+			foreach (var y in Enumerable.Range(newLevel + 1, oldLevel - newLevel))
 			{
 				Console.SetCursorPosition(xPos, terminalHeight - y);
 				Console.Write(' ');
@@ -181,7 +182,7 @@ public class ConsoleSpectrogram : IDisposable
 			return;
 		}
 
-		foreach (var y in Enumerable.Range(oldLevel + 1, newLevel))
+		foreach (var y in Enumerable.Range(oldLevel + 1, newLevel - oldLevel))
 		{
 			Console.SetCursorPosition(xPos, terminalHeight - y);
 			Console.ForegroundColor = GetColorForPercent(y * 100 / terminalHeight);
