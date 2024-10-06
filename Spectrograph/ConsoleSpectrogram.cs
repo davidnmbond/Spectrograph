@@ -6,14 +6,11 @@ namespace Spectrograph;
 
 public class ConsoleSpectrogram : IDisposable
 {
-	private const bool UseTestSignal = false;
-
-	private const int WindowSize = 1024;
-	private static readonly double[] _sampleBuffer = new double[1024];
-	private static readonly double[] _demoBuffer = new double[1024];
-	private static readonly int[] _lastDbValues = new int[1000];
+	private readonly double[] _sampleBuffer;
+	private readonly int[] _lastDbValues = new int[1000];
 	private bool _disposedValue;
-	private readonly SlidingDFT _dft = new(WindowSize);
+	private readonly SlidingDFT _dft;
+	private readonly double _highEndKHz;
 	private readonly WaveInEvent _waveIn;
 	private int _lastTerminalHeight;
 	private bool _isDrawing;
@@ -21,8 +18,10 @@ public class ConsoleSpectrogram : IDisposable
 	private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
 	private readonly Random _random = new();
 	private readonly int _sampleRateHz;
+	private readonly int _windowSize;
+	private readonly bool _useTestSignal;
 
-	public ConsoleSpectrogram(int sampleRateHz)
+	public ConsoleSpectrogram(int deviceId, int sampleRateHz, int windowSize, bool useTestSignal)
 	{
 		//NBGV
 		var versionString = typeof(ConsoleSpectrogram).Assembly.GetName().Version!.ToString(3);
@@ -42,7 +41,7 @@ public class ConsoleSpectrogram : IDisposable
 
 		_waveIn = new()
 		{
-			DeviceNumber = selectedDevice,
+			DeviceNumber = deviceId,
 			WaveFormat = new WaveFormat(sampleRateHz, 16, 1),
 			BufferMilliseconds = 20,
 		};
@@ -50,6 +49,14 @@ public class ConsoleSpectrogram : IDisposable
 		_waveIn.DataAvailable += OnDataAvailable;
 		_waveIn.StartRecording();
 		_sampleRateHz = sampleRateHz;
+		_windowSize = windowSize;
+		_useTestSignal = useTestSignal;
+
+		_sampleBuffer = new double[windowSize];
+
+		_dft = new SlidingDFT(windowSize);
+
+		_highEndKHz = sampleRateHz / 4000.0;
 	}
 
 	private void OnDataAvailable(object? sender, WaveInEventArgs e)
@@ -63,18 +70,17 @@ public class ConsoleSpectrogram : IDisposable
 
 		try
 		{
-
 			// Fill _sampleBuffer with the new samples
-			if (UseTestSignal)
+			if (_useTestSignal)
 			{
-				// Sine waves at 1/4 amplitude at 1000, 2000 and 4000Hz plus noise at 5% amplitude
+				// Sine waves at 1000, 2000 and 4000Hz plus noise at 2% amplitude
 				for (var i = 0; i < _sampleBuffer.Length; i++)
 				{
 					_sampleBuffer[i] =
-						1 * Math.Sin(2 * Math.PI * 1000 * i / _sampleRateHz)
-						+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (2000 * i))
-						+ 0.25 * Math.Sin(2 * Math.PI / _sampleRateHz * (4000 * i))
-						+ 0.05 * (2 * _random.NextDouble() - 1)
+						0.25 * Math.Sin(2 * Math.PI * 1000 * i / _sampleRateHz)
+						+ 0.125 * Math.Sin(2 * Math.PI / _sampleRateHz * (2000 * i))
+						+ 0.0675 * Math.Sin(2 * Math.PI / _sampleRateHz * (10000 * i))
+						+ 0.02 * (2 * _random.NextDouble() - 1)
 						;
 				}
 			}
@@ -128,11 +134,12 @@ public class ConsoleSpectrogram : IDisposable
 			_lastTerminalHeight = terminalHeight;
 			_lastTerminalWidth = terminalWidth;
 			Console.BufferHeight = terminalHeight + 1;
+			Console.CursorVisible = false;
 		}
 
 		var analysis = _dft.Analyse();
 		var decibels = analysis.Decibels;
-		var stepSize = (0.0 + WindowSize) / terminalWidth / 4;
+		var stepSize = (0.0 + _windowSize) / terminalWidth / 4;
 		for (var x = 0; x < terminalWidth - 1; x++)
 		{
 			var startIndex = (int)(x * stepSize) + 1;
@@ -210,7 +217,7 @@ public class ConsoleSpectrogram : IDisposable
 		return value;
 	}
 
-	private static void DrawXAxisLabels(
+	private void DrawXAxisLabels(
 		int terminalHeight,
 		int terminalWidth,
 		double decibelMin,
@@ -220,10 +227,10 @@ public class ConsoleSpectrogram : IDisposable
 		Console.SetCursorPosition(0, terminalHeight);
 		Console.Write("0kHz".PadRight(5)); // First label
 		Console.SetCursorPosition(terminalWidth - 6, terminalHeight);
-		Console.Write("22kHz"); // Last label
+		Console.Write($"{_highEndKHz:N0}kHz"); // Last label
 
 		// Draw the range in the middle at the bottom
-		var text = $"min:{decibelMin:F2}dB - max:{decibelMax:F2}";
+		var text = $" min:{decibelMin:F2}dB - max:{decibelMax:F2} ";
 		Console.SetCursorPosition((terminalWidth - text.Length) / 2, terminalHeight);
 		Console.Write(text);
 	}
